@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ระบบบันทึกการยืมอุปกรณ์</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    .problem-modal {
+      display: none;
+      position: fixed;
+      z-index: 100;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.4);
+    }
+    .modal-content {
+      background-color: #fefefe;
+      margin: 15% auto;
+      padding: 20px;
+      border: 1px solid #888;
+      width: 80%;
+      max-width: 500px;
+      border-radius: 8px;
+    }
+    .editable-cell:focus {
+      outline: 2px solid #3b82f6;
+      background-color: #eff6ff;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 p-6">
+
+  <!-- เมนูแจ้งปัญหา -->
+  <div class="fixed top-4 right-4 z-50">
+    <button onclick="openProblemModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow flex items-center">
+      <i class="fas fa-exclamation-circle mr-2"></i> แจ้งปัญหา
+    </button>
+  </div>
+
+  <!-- Modal แจ้งปัญหา -->
+  <div id="problemModal" class="problem-modal">
+    <div class="modal-content">
+      <span onclick="closeProblemModal()" class="float-right text-gray-500 hover:text-gray-700 cursor-pointer">
+        <i class="fas fa-times"></i>
+      </span>
+      <h3 class="text-xl font-bold mb-4">แจ้งปัญหา/ติดต่อผู้ดูแลระบบ</h3>
+      <div class="mb-4">
+        <p class="font-semibold">ผู้ดูแลระบบ:</p>
+        <p>พัทธนันท์ (090-482-3901)</p>
+      </div>
+        </div>
+  </div>
+
+  <div class="max-w-6xl mx-auto bg-white rounded-lg shadow-md p-6 mt-12">
+    <h1 class="text-2xl font-bold mb-6 text-center">ระบบบันทึกการยืมอุปกรณ์ คณะวิทยาศาสตร์เทคโนโลยีและการเกษตร</h1>
+
+    <!-- ADMIN SECTION (HIDDEN BY DEFAULT) -->
+    <div id="adminSection" class="hidden mb-6">
+      <div class="border-2 border-blue-400 p-4 rounded-lg bg-blue-50 mb-4">
+        <h2 class="text-xl font-bold mb-2 text-blue-700">จัดการอุปกรณ์ (สำหรับผู้ดูแลระบบ)</h2>
+        <div class="flex flex-wrap items-center gap-4 mb-2">
+          <input id="equipmentName" type="text" placeholder="ชื่ออุปกรณ์" class="border p-2 border-blue-300 flex-1">
+          <button id="addBtn" onclick="addEquipment()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2">เพิ่มอุปกรณ์</button>
+        </div>
+        <div class="flex flex-wrap items-center gap-4">
+          <select id="deleteSelect" multiple class="border p-2 w-full h-32 border-blue-300">
+            <option disabled>เลือกอุปกรณ์ที่ต้องการลบ</option>
+          </select>
+          <button id="delBtn" onclick="deleteSelectedEquipment()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2">ลบอุปกรณ์ที่เลือก</button>
+        </div>
+      </div>
+      <hr class="my-4 border-t-2 border-gray-300">
+    </div>
+
+    <!-- ADMIN LOGIN BUTTON (VISIBLE TO ALL) -->
+    <div class="mb-6 text-center">
+      <button id="adminToggleBtn" onclick="toggleAdminLogin()" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 text-sm">
+        สำหรับผู้ดูแลระบบ
+      </button>
+      <div id="adminLoginForm" class="hidden mt-4 border-2 border-red-400 p-4 rounded-lg bg-red-50">
+        <label class="block mb-2 font-semibold text-red-700">กรอกรหัสผ่านผู้ดูแลระบบ</label>
+        <div class="flex space-x-2 items-center justify-center">
+          <input id="adminPassword" type="password" placeholder="รหัสผ่านผู้ดูแลระบบ" class="border p-2 border-red-300 w-64">
+          <button onclick="unlockAdmin()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2">เข้าสู่ระบบ</button>
+        </div>
+        <p id="adminStatus" class="text-sm mt-2 text-red-600 hidden">รหัสผ่านไม่ถูกต้อง</p>
+      </div>
+    </div>
+
+    <!-- BORROW FORM (VISIBLE TO ALL) -->
+    <div class="mb-6">
+      <h2 class="text-xl font-bold mb-4">บันทึกการยืมอุปกรณ์</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ-สกุล ผู้ยืม</label>
+          <input id="borrowerName" type="text" placeholder="กรอกชื่อ-สกุล" class="border p-2 w-full rounded">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">หน่วยงาน</label>
+          <input id="borrowerDepartment" type="text" placeholder="กรอกหน่วยงาน" class="border p-2 w-full rounded">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">เบอร์ติดต่อ</label>
+          <input id="borrowerContact" type="text" placeholder="กรอกเบอร์ติดต่อ" class="border p-2 w-full rounded">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">อุปกรณ์</label>
+          <select id="borrowSelect" class="border p-2 w-full rounded">
+            <option value="">เลือกอุปกรณ์</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">จำนวน</label>
+          <input id="equipmentQuantity" type="number" min="1" placeholder="จำนวน" class="border p-2 w-full rounded">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">วัตถุประสงค์</label>
+          <input id="usagePurpose" type="text" placeholder="กรอกวัตถุประสงค์" class="border p-2 w-full rounded">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">วันที่ยืม</label>
+          <input id="borrowTime" type="datetime-local" class="border p-2 w-full rounded">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">วันที่คืน</label>
+          <input id="returnTime" type="datetime-local" class="border p-2 w-full rounded">
+        </div>
+      </div>
+      <div class="text-center">
+        <button onclick="borrowEquipment()" class="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg shadow">
+          บันทึกการยืม
+        </button>
+      </div>
+      <p class="text-sm text-gray-500 mt-2 text-center">* สามารถกรอกข้อมูลบางส่วนได้ตามความจำเป็น</p>
+    </div>
+
+    <!-- BORROW LOG TABLE (VISIBLE TO ALL) -->
+    <div class="mt-8">
+      <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+        <h2 class="text-xl font-bold">รายการการยืม-คืน</h2>
+        <div class="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+          <div class="relative flex-1">
+            <input type="text" id="searchInput" placeholder="ค้นหาชื่อผู้ยืม/อุปกรณ์..." 
+                   class="border p-2 pl-10 w-full rounded-lg focus:ring-2 focus:ring-blue-500">
+            <svg class="absolute left-3 top-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+          </div>
+          <div class="flex space-x-2">
+            <button onclick="exportToExcel()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm rounded">
+              Export Excel
+            </button>
+            <button onclick="exportToPDF()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 text-sm rounded">
+              Export PDF
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="overflow-x-auto">
+        <div class="relative">
+          <table class="w-full border" id="borrowTable">
+            <thead>
+              <tr class="bg-gray-200 text-left">
+                <th class="border px-3 py-2">ลำดับ</th>
+                <th class="border px-3 py-2">วันที่</th>
+                <th class="border px-3 py-2">ชื่อ-สกุล ผู้ยืม</th>
+                <th class="border px-3 py-2">หน่วยงาน</th>
+                <th class="border px-3 py-2">เบอร์ติดต่อ</th>
+                <th class="border px-3 py-2">อุปกรณ์</th>
+                <th class="border px-3 py-2">จำนวน</th>
+                <th class="border px-3 py-2">วัตถุประสงค์</th>
+                <th class="border px-3 py-2">เวลายืม</th>
+                <th class="border px-3 py-2">เวลาคืน</th>
+                <th class="border px-3 py-2">สถานะ</th>
+              </tr>
+            </thead>
+            <tbody id="borrowLog" class="bg-white"></tbody>
+          </table>
+          <div id="actionButtons" class="absolute right-0 top-0 h-full flex flex-col justify-start mt-12 -mr-8"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { jsPDF } = window.jspdf;
+    const ADMIN_PASSWORD = "admin123"; // เปลี่ยนรหัสผ่านนี้ให้ปลอดภัย
+    let isAdmin = false;
+
+    let equipmentList = JSON.parse(localStorage.getItem('equipmentList')) || [];
+    let borrowLog = JSON.parse(localStorage.getItem('borrowLog')) || [];
+
+    // Initialize
+    document.addEventListener("DOMContentLoaded", () => {
+      renderLists();
+      renderLogs();
+      
+      // Add search functionality
+      document.getElementById('searchInput').addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase();
+        const rows = document.querySelectorAll('#borrowLog tr');
+        
+        rows.forEach((row, index) => {
+          const name = row.querySelector('td:nth-child(3)').textContent.toLowerCase();
+          const equipment = row.querySelector('td:nth-child(6)').textContent.toLowerCase();
+          if (name.includes(searchTerm) || equipment.includes(searchTerm)) {
+            row.style.display = '';
+            if (document.getElementById(`actionBtn-${index}`)) {
+              document.getElementById(`actionBtn-${index}`).style.display = 'block';
+            }
+          } else {
+            row.style.display = 'none';
+            if (document.getElementById(`actionBtn-${index}`)) {
+              document.getElementById(`actionBtn-${index}`).style.display = 'none';
+            }
+          }
+        });
+      });
+    });
+
+    // ฟังก์ชันจัดการ Modal แจ้งปัญหา
+    function openProblemModal() {
+      document.getElementById('problemModal').style.display = 'block';
+    }
+
+    function closeProblemModal() {
+      document.getElementById('problemModal').style.display = 'none';
+    }
+
+    function submitProblem() {
+      const problemDetail = document.getElementById('problemDetail').value;
+      if (problemDetail.trim() === '') {
+        alert('กรุณากรอกรายละเอียดปัญหา');
+        return;
+      }
+      
+      // ในที่นี้เราจะแสดงข้อมูลปัญหาใน console และ alert
+      console.log('แจ้งปัญหา:', problemDetail);
+      alert('ส่งรายงานปัญหาเรียบร้อยแล้ว\nผู้ดูแลระบบจะติดต่อกลับไปที่ 090-482-3901');
+      
+      // สร้างลิงก์สำหรับส่งอีเมล (ทางเลือก)
+      const emailBody = `รายละเอียดปัญหา: ${problemDetail}%0D%0A%0D%0Aชื่อผู้แจ้ง: [กรอกชื่อที่นี่]`;
+      const mailtoLink = `mailto:your-email@example.com?subject=แจ้งปัญหาเกี่ยวกับระบบยืมอุปกรณ์&body=${emailBody}`;
+      
+      // เปิดอีเมลไคลเอนต์ (ทางเลือก)
+      // window.location.href = mailtoLink;
+      
+      closeProblemModal();
+      document.getElementById('problemDetail').value = '';
+    }
+
+    // Toggle admin login form
+    function toggleAdminLogin() {
+      const form = document.getElementById("adminLoginForm");
+      form.classList.toggle("hidden");
+    }
+
+    // Unlock admin features
+    function unlockAdmin() {
+      const pwd = document.getElementById("adminPassword").value;
+      if (pwd === ADMIN_PASSWORD) {
+        isAdmin = true;
+        document.getElementById("adminSection").classList.remove("hidden");
+        document.getElementById("adminLoginForm").classList.add("hidden");
+        document.getElementById("adminStatus").classList.add("hidden");
+        document.getElementById("adminToggleBtn").classList.add("hidden");
+        renderLists();
+        renderLogs();
+      } else {
+        document.getElementById("adminStatus").classList.remove("hidden");
+      }
+    }
+
+    // Render equipment lists
+    function renderLists() {
+      const borrowSelect = document.getElementById("borrowSelect");
+      borrowSelect.innerHTML = '<option value="">เลือกอุปกรณ์</option>';
+      equipmentList.forEach(item => {
+        borrowSelect.innerHTML += `<option value="${item}">${item}</option>`;
+      });
+
+      const deleteSelect = document.getElementById("deleteSelect");
+      deleteSelect.innerHTML = '<option disabled>เลือกอุปกรณ์ที่ต้องการลบ</option>';
+      equipmentList.forEach(item => {
+        deleteSelect.innerHTML += `<option value="${item}">${item}</option>`;
+      });
+    }
+
+    // Render borrow logs
+    function renderLogs() {
+      const borrowLogEl = document.getElementById("borrowLog");
+      const actionButtonsEl = document.getElementById("actionButtons");
+      
+      borrowLogEl.innerHTML = '';
+      actionButtonsEl.innerHTML = '';
+      
+      if (borrowLog.length === 0) {
+        borrowLogEl.innerHTML = `
+          <tr>
+            <td colspan="11" class="border px-3 py-2 text-center text-gray-500">ไม่มีรายการยืมอุปกรณ์</td>
+          </tr>
+        `;
+        return;
+      }
+
+      borrowLog.forEach((entry, index) => {
+        const row = document.createElement('tr');
+        row.className = 'hover:bg-gray-50';
+        row.dataset.index = index;
+        
+        // Add cells
+        const fields = [
+          'index', 'date', 'name', 'department', 'contact', 
+          'equipment', 'quantity', 'purpose', 'borrow', 'return'
+        ];
+        
+        fields.forEach((field, i) => {
+          const cell = document.createElement('td');
+          cell.className = 'border px-3 py-2';
+          
+          if (field === 'index') {
+            cell.textContent = index + 1;
+          } else {
+            if (isAdmin && field !== 'status') {
+              cell.contentEditable = true;
+              cell.className += ' editable-cell bg-blue-50';
+              cell.addEventListener('blur', (e) => updateLogEntry(index, field, e.target.textContent));
+            }
+            cell.textContent = entry[field] || '-';
+          }
+          
+          row.appendChild(cell);
+        });
+
+        // Add status cell
+        const statusCell = document.createElement('td');
+        statusCell.className = 'border px-3 py-2 text-center';
+        
+        const status = entry.status || 'ยังไม่คืน';
+        const color = status === 'คืนแล้ว' ? 'text-green-600' : 'text-red-600';
+        statusCell.innerHTML = `<span class="${color} font-medium">${status}</span>`;
+        
+        if (isAdmin) {
+          statusCell.contentEditable = false;
+          statusCell.addEventListener('click', () => {
+            const newStatus = status === 'คืนแล้ว' ? 'ยังไม่คืน' : 'คืนแล้ว';
+            statusCell.innerHTML = `<span class="${newStatus === 'คืนแล้ว' ? 'text-green-600' : 'text-red-600'} font-medium">${newStatus}</span>`;
+            borrowLog[index].status = newStatus;
+            localStorage.setItem("borrowLog", JSON.stringify(borrowLog));
+          });
+        }
+        
+        row.appendChild(statusCell);
+        borrowLogEl.appendChild(row);
+
+        // Add action button (outside table)
+        if (isAdmin) {
+          const actionBtn = document.createElement('button');
+          actionBtn.id = `actionBtn-${index}`;
+          actionBtn.className = 'ml-2 text-red-500 hover:text-red-700';
+          actionBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+          actionBtn.title = 'ลบรายการนี้';
+          actionBtn.addEventListener('click', () => deleteLog(index));
+          
+          const actionContainer = document.createElement('div');
+          actionContainer.className = 'mb-2 flex justify-end';
+          actionContainer.appendChild(actionBtn);
+          
+          actionButtonsEl.appendChild(actionContainer);
+        }
+      });
+    }
+
+    // Update log entry when cell is edited
+    function updateLogEntry(index, field, value) {
+      if (field === 'index') return;
+      
+      if (field === 'quantity') {
+        value = parseInt(value) || 0;
+      }
+      
+      borrowLog[index][field] = value === '-' ? '' : value;
+      localStorage.setItem("borrowLog", JSON.stringify(borrowLog));
+    }
+
+    // Add new equipment
+    function addEquipment() {
+      const name = document.getElementById("equipmentName").value.trim();
+      if (name && !equipmentList.includes(name)) {
+        equipmentList.push(name);
+        localStorage.setItem("equipmentList", JSON.stringify(equipmentList));
+        renderLists();
+        document.getElementById("equipmentName").value = '';
+        alert(`เพิ่มอุปกรณ์ "${name}" เรียบร้อยแล้ว`);
+      } else if (equipmentList.includes(name)) {
+        alert("มีอุปกรณ์นี้ในระบบแล้ว");
+      }
+    }
+
+    // Delete selected equipment
+    function deleteSelectedEquipment() {
+      const selected = Array.from(document.getElementById("deleteSelect").selectedOptions).map(o => o.value);
+      if (selected.length === 0) {
+        alert("กรุณาเลือกอุปกรณ์ที่ต้องการลบ");
+        return;
+      }
+      
+      if (confirm(`ต้องการลบอุปกรณ์ที่เลือก ${selected.length} รายการหรือไม่?`)) {
+        equipmentList = equipmentList.filter(item => !selected.includes(item));
+        localStorage.setItem("equipmentList", JSON.stringify(equipmentList));
+        renderLists();
+        alert("ลบอุปกรณ์เรียบร้อยแล้ว");
+      }
+    }
+
+    // Record equipment borrowing
+    function borrowEquipment() {
+      const name = document.getElementById("borrowerName").value.trim();
+      const department = document.getElementById("borrowerDepartment").value.trim();
+      const contact = document.getElementById("borrowerContact").value.trim();
+      const quantity = document.getElementById("equipmentQuantity").value.trim();
+      const purpose = document.getElementById("usagePurpose").value.trim();
+      const equipment = document.getElementById("borrowSelect").value;
+      const borrow = document.getElementById("borrowTime").value;
+      const ret = document.getElementById("returnTime").value;
+      const date = new Date().toLocaleDateString('th-TH');
+
+      // Basic validation
+      if (!name && !department && !contact && !equipment && !quantity && !purpose && !borrow && !ret) {
+        alert("กรุณากรอกข้อมูลอย่างน้อย 1 ช่อง");
+        return;
+      }
+
+      borrowLog.push({ 
+        date, 
+        name, 
+        department,
+        contact, 
+        equipment, 
+        quantity, 
+        purpose, 
+        borrow, 
+        return: ret,
+        status: 'ยังไม่คืน' // Default status
+      });
+      
+      localStorage.setItem("borrowLog", JSON.stringify(borrowLog));
+
+      // Clear form
+      document.getElementById("borrowerName").value = '';
+      document.getElementById("borrowerDepartment").value = '';
+      document.getElementById("borrowerContact").value = '';
+      document.getElementById("equipmentQuantity").value = '';
+      document.getElementById("usagePurpose").value = '';
+      document.getElementById("borrowTime").value = '';
+      document.getElementById("returnTime").value = '';
+      
+      renderLogs();
+      alert("บันทึกการยืมอุปกรณ์เรียบร้อยแล้ว");
+    }
+
+    // Delete log entry
+    function deleteLog(index) {
+      if (isAdmin && confirm("ต้องการลบรายการนี้หรือไม่?")) {
+        borrowLog.splice(index, 1);
+        localStorage.setItem("borrowLog", JSON.stringify(borrowLog));
+        renderLogs();
+      }
+    }
+
+    // Export to Excel
+    function exportToExcel() {
+      const data = [
+        ["ลำดับ", "วันที่", "ชื่อ-สกุล ผู้ยืม", "หน่วยงาน", "เบอร์ติดต่อ", "อุปกรณ์", "จำนวน", "วัตถุประสงค์", "เวลายืม", "เวลาคืน", "สถานะ"]
+      ];
+      
+      borrowLog.forEach((entry, index) => {
+        data.push([
+          index + 1,
+          entry.date || '-',
+          entry.name || '-',
+          entry.department || '-',
+          entry.contact || '-',
+          entry.equipment || '-',
+          entry.quantity || '-',
+          entry.purpose || '-',
+          entry.borrow || '-',
+          entry.return || '-',
+          entry.status || 'ยังไม่คืน'
+        ]);
+      });
+      
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      XLSX.utils.book_append_sheet(wb, ws, "รายการยืมอุปกรณ์");
+      XLSX.writeFile(wb, `รายการยืมอุปกรณ์_${new Date().toISOString().slice(0,10)}.xlsx`);
+    }
+
+    // Export to PDF
+    function exportToPDF() {
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm'
+      });
+      
+      // Header
+      doc.setFontSize(16);
+      doc.setTextColor(40);
+      doc.setFont('helvetica', 'bold');
+      doc.text('รายการยืม-คืนอุปกรณ์', 105, 10, { align: 'center' });
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`วันที่ออกรายงาน: ${new Date().toLocaleDateString('th-TH')}`, 105, 16, { align: 'center' });
+      
+      // Table data
+      const headers = [
+        "ลำดับ", 
+        "วันที่", 
+        "ชื่อ-สกุล", 
+        "หน่วยงาน",
+        "เบอร์ติดต่อ", 
+        "อุปกรณ์", 
+        "จำนวน", 
+        "วัตถุประสงค์", 
+        "ยืม", 
+        "คืน",
+        "สถานะ"
+      ];
+      
+      const rows = borrowLog.map((entry, index) => [
+        index + 1,
+        entry.date || '-',
+        entry.name || '-',
+        entry.department || '-',
+        entry.contact || '-',
+        entry.equipment || '-',
+        entry.quantity || '-',
+        entry.purpose || '-',
+        entry.borrow ? entry.borrow.replace('T', ' ') : '-',
+        entry.return ? entry.return.replace('T', ' ') : '-',
+        entry.status || 'ยังไม่คืน'
+      ]);
+      
+      // Create table
+      doc.autoTable({
+        head: [headers],
+        body: rows,
+        startY: 20,
+        margin: { top: 20 },
+        styles: {
+          fontSize: 8,
+          cellPadding: 2,
+          overflow: 'linebreak',
+          valign: 'middle'
+        },
+        headStyles: {
+          fillColor: [55, 65, 81], // gray-700
+          textColor: 255,
+          fontStyle: 'bold'
+        },
+        alternateRowStyles: {
+          fillColor: [249, 250, 251] // gray-50
+        },
+        columnStyles: {
+          0: {cellWidth: 10},
+          1: {cellWidth: 15},
+          2: {cellWidth: 25},
+          3: {cellWidth: 25},
+          4: {cellWidth: 20},
+          5: {cellWidth: 25},
+          6: {cellWidth: 15},
+          7: {cellWidth: 30},
+          8: {cellWidth: 20},
+          9: {cellWidth: 20},
+          10: {cellWidth: 15}
+        }
+      });
+      
+      // Footer
+      const pageCount = doc.internal.getNumberOfPages();
+      for(let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text(`หน้า ${i} จาก ${pageCount}`, 200, 207, { align: 'right' });
+      }
+      
+      // Save file
+      doc.save(`รายการยืมอุปกรณ์_${new Date().toISOString().slice(0,10)}.pdf`);
+    }
+  </script>
+</body>
+</html>
